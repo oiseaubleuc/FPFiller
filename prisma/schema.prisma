@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+model Client {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  email     String?
+  vat       String?
+  
+  firstName String?
+  lastName  String?
+  company   String?
+  address   String?
+  city      String?
+  postalCode String?
+  country   String?   @default("België")
+  phone     String?
+  
+  invoices  Invoice[]
+  riskProfile ClientRiskProfile?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([name])
+}
+
+model Invoice {
+  id            Int           @id @default(autoincrement())
+
+  number        String        @unique
+
+  clientId      Int
+  client        Client        @relation(fields: [clientId], references: [id])
+
+  date          DateTime      @default(now())
+  dueDate       DateTime?
+  paidAt        DateTime?
+  status        InvoiceStatus @default(SENT)
+
+  currency      String        @default("EUR")
+  note          String?
+
+  items         InvoiceItem[]
+
+  vatRateBps    Int
+
+  subtotalCents Int
+  vatCents      Int
+  totalCents    Int
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([clientId])
+  @@index([date])
+}
+
+model InvoiceItem {
+  id             Int      @id @default(autoincrement())
+
+  invoiceId      Int
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  description    String
+  quantity       Int
+  unitPriceCents Int
+  lineTotalCents Int
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([invoiceId])
+}
+
+model UserProfile {
+  id              Int      @id @default(autoincrement())
+  experienceLevel String   @default("mid")
+  specialization  String?
+  region          String?  @default("België")
+  baseHourlyRate  Int?
+  yearsExperience Int?
+  skills          String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model MarketData {
+  id              Int      @id @default(autoincrement())
+  service         String
+  region          String
+  experienceLevel String
+  minRate         Int
+  maxRate         Int
+  averageRate     Int
+  medianRate      Int
+  sampleSize      Int
+  lastUpdated     DateTime @default(now())
+  quarter         String?
+  year            Int?
+  
+  @@unique([service, region, experienceLevel, quarter, year])
+  @@index([service])
+  @@index([region])
+  @@index([lastUpdated])
+}
+
+model ClientRiskProfile {
+  id                  Int      @id @default(autoincrement())
+  clientId            Int      @unique
+  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  
+  averagePaymentDays  Int?
+  onTimePaymentRate   Float?
+  riskScore           Float?   @default(0.5)
+  paymentReliability  String?  @default("unknown")
+  totalInvoices       Int      @default(0)
+  totalPaid           Int       @default(0)
+  totalOverdue        Int       @default(0)
+  
+  lastAnalysis        DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  @@index([clientId])
+  @@index([riskScore])
+}
+
+model ServiceCategory {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique
+  parentCategory  String?
+  keywords        String?
+  avgComplexity   Float?   @default(1.0)
+  baseRate        Int?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([name])
+}
