@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { toCents, type ItemIn } from "@/lib/calc";
+import { invoiceSchema, formatValidationErrors } from "@/lib/validation";
+import { invoiceRepository } from "@/lib/repositories/invoiceRepository";
+import { clientRepository } from "@/lib/repositories/clientRepository";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
+/**
+ * GET /api/invoices/[id]
+ * Haal een specifieke invoice op via het invoice repository
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -15,10 +22,7 @@ export async function GET(
       return NextResponse.json({ error: "Invalid invoice ID" }, { status: 400 });
     }
 
-    const invoice = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
-      include: { client: true, items: true },
-    });
+    const invoice = await invoiceRepository.findById(invoiceId);
 
     if (!invoice) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
@@ -30,6 +34,10 @@ export async function GET(
   }
 }
 
+/**
+ * PATCH /api/invoices/[id]
+ * Update een bestaande invoice via de repositories
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -41,10 +49,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid invoice ID" }, { status: 400 });
     }
 
-    const existingInvoice = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
-      include: { client: true, items: true },
-    });
+    const existingInvoice = await invoiceRepository.findById(invoiceId);
 
     if (!existingInvoice) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
@@ -52,51 +57,60 @@ export async function PATCH(
 
     const raw = await request.json();
 
-    // Status update (simple case)
+    // Status update (simple case) - gebruik repository helper
     if (raw.status && !raw.items) {
-      const updated = await prisma.invoice.update({
-        where: { id: invoiceId },
-        data: {
-          status: raw.status,
-          paidAt: raw.status === "PAID" ? new Date() : null,
-        },
-        include: { client: true, items: true },
-      });
+      const updated = await invoiceRepository.updateStatus(
+        invoiceId,
+        raw.status,
+        raw.status === "PAID" ? new Date() : null
+      );
       return NextResponse.json(updated);
     }
 
-    // Full update
-    const clientName = (raw.clientName ?? existingInvoice.client.name).trim();
-    const clientFirstName = (raw.clientFirstName ?? "").trim() || null;
-    const clientLastName = (raw.clientLastName ?? "").trim() || null;
-    const clientCompany = (raw.clientCompany ?? "").trim() || null;
-    const clientEmail = (raw.clientEmail ?? "").trim() || null;
-    const clientPhone = (raw.clientPhone ?? "").trim() || null;
-    const clientAddress = (raw.clientAddress ?? "").trim() || null;
-    const clientCity = (raw.clientCity ?? "").trim() || null;
-    const clientPostalCode = (raw.clientPostalCode ?? "").trim() || null;
-    const clientVat = (raw.clientVat ?? "").trim() || null;
-    const vatPercent = Number.isFinite(raw.vatPercent) ? Math.max(0, raw.vatPercent) : existingInvoice.vatRateBps / 100;
-    const currency = (raw.currency ?? "EUR").trim() || "EUR";
-    const note = (raw.note ?? "").trim() || null;
-    const status = raw.status ?? existingInvoice.status;
-    const dueDays = Number.isFinite(raw.dueDays) ? Math.max(0, Math.floor(raw.dueDays!)) : 30;
+    // Full update - prepare data with defaults from existing invoice
+    const updateData = {
+      clientName: raw.clientName ?? existingInvoice.client.name,
+      clientFirstName: raw.clientFirstName,
+      clientLastName: raw.clientLastName,
+      clientCompany: raw.clientCompany,
+      clientEmail: raw.clientEmail,
+      clientPhone: raw.clientPhone,
+      clientAddress: raw.clientAddress,
+      clientCity: raw.clientCity,
+      clientPostalCode: raw.clientPostalCode,
+      clientVat: raw.clientVat,
+      vatPercent: raw.vatPercent ?? existingInvoice.vatRateBps / 100,
+      currency: raw.currency ?? "EUR",
+      note: raw.note,
+      status: raw.status ?? existingInvoice.status,
+      dueDays: raw.dueDays ?? 30,
+      items: raw.items ?? [],
+    };
+    
+    // Validate the full update data
+    const validatedData = invoiceSchema.parse(updateData);
+    
+    const clientName = validatedData.clientName;
+    const clientFirstName = validatedData.clientFirstName || null;
+    const clientLastName = validatedData.clientLastName || null;
+    const clientCompany = validatedData.clientCompany || null;
+    const clientEmail = validatedData.clientEmail || null;
+    const clientPhone = validatedData.clientPhone || null;
+    const clientAddress = validatedData.clientAddress || null;
+    const clientCity = validatedData.clientCity || null;
+    const clientPostalCode = validatedData.clientPostalCode || null;
+    const clientVat = validatedData.clientVat || null;
+    const vatPercent = validatedData.vatPercent;
+    const currency = validatedData.currency || "EUR";
+    const note = validatedData.note || null;
+    const status = validatedData.status || existingInvoice.status;
+    const dueDays = validatedData.dueDays || 30;
 
-    const items = Array.isArray(raw.items) ? raw.items : [];
-    const cleanedItems: ItemIn[] = items
-      .map((i: any) => ({
-        description: (i.description ?? "").trim(),
-        qty: Math.max(0, Number(i.qty) || 0),
-        unitPriceEuro: Math.max(0, Number(i.unitPriceEuro) || 0),
-      }))
-      .filter((i) => i.description && i.qty > 0);
-
-    if (!clientName || cleanedItems.length === 0) {
-      return NextResponse.json(
-        { error: "Vul een klantnaam in en minstens één geldige lijn." },
-        { status: 400 }
-      );
-    }
+    const cleanedItems: ItemIn[] = validatedData.items.map((i) => ({
+      description: i.description,
+      qty: i.qty,
+      unitPriceEuro: i.unitPriceEuro,
+    }));
 
     const { subtotalCents, vatCents, totalCents, vatRateBps } = toCents(cleanedItems, vatPercent);
 
@@ -109,63 +123,46 @@ export async function PATCH(
 
     const dueDate = raw.dueDate ? new Date(raw.dueDate) : new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000);
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const client = await tx.client.upsert({
-        where: { name: clientName },
-        update: {
-          firstName: clientFirstName ?? undefined,
-          lastName: clientLastName ?? undefined,
-          company: clientCompany ?? undefined,
-          email: clientEmail ?? undefined,
-          phone: clientPhone ?? undefined,
-          address: clientAddress ?? undefined,
-          city: clientCity ?? undefined,
-          postalCode: clientPostalCode ?? undefined,
-          vat: clientVat ?? undefined
-        },
-        create: {
-          name: clientName,
-          firstName: clientFirstName,
-          lastName: clientLastName,
-          company: clientCompany,
-          email: clientEmail,
-          phone: clientPhone,
-          address: clientAddress,
-          city: clientCity,
-          postalCode: clientPostalCode,
-          vat: clientVat
-        },
-      });
+    // Upsert client via repository
+    const client = await clientRepository.upsertByName({
+      name: clientName,
+      firstName: clientFirstName,
+      lastName: clientLastName,
+      company: clientCompany,
+      email: clientEmail,
+      phone: clientPhone,
+      address: clientAddress,
+      city: clientCity,
+      postalCode: clientPostalCode,
+      vat: clientVat,
+    });
 
-      // Delete existing items
-      await tx.invoiceItem.deleteMany({
-        where: { invoiceId: invoiceId },
-      });
-
-      const invoice = await tx.invoice.update({
-        where: { id: invoiceId },
-        data: {
-          clientId: client.id,
-          date: raw.date ? new Date(raw.date) : existingInvoice.date,
-          dueDate,
-          status,
-          paidAt: status === "PAID" && !existingInvoice.paidAt ? new Date() : existingInvoice.paidAt,
-          currency,
-          note,
-          vatRateBps,
-          subtotalCents,
-          vatCents,
-          totalCents,
-          items: { create: itemsCents },
-        },
-        include: { client: true, items: true },
-      });
-
-      return invoice;
+    // Update invoice via repository (items worden automatisch vervangen)
+    const updated = await invoiceRepository.update(invoiceId, {
+      clientId: client.id,
+      date: raw.date ? new Date(raw.date) : existingInvoice.date,
+      dueDate,
+      status,
+      paidAt: status === "PAID" && !existingInvoice.paidAt ? new Date() : existingInvoice.paidAt,
+      currency,
+      note,
+      vatRateBps,
+      subtotalCents,
+      vatCents,
+      totalCents,
+      items: itemsCents,
     });
 
     return NextResponse.json(updated);
   } catch (e: any) {
+    // Handle Zod validation errors
+    if (e instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Validatiefout", details: formatValidationErrors(e) },
+        { status: 400 }
+      );
+    }
+    
     return NextResponse.json({ error: e.message ?? "Serverfout" }, { status: 500 });
   }
 }
