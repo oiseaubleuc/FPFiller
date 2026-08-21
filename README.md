@@ -1,6 +1,5 @@
 # FPFiller
 
-**Auteur:** Houdaifa Hamouchi · Erasmus Hogeschool Brussel · Vak: Future Portfolio (PRG2)
 
 ## Onderzoeksvraag
 
@@ -90,4 +89,4 @@ Next.js, React, TypeScript, Tailwind CSS, Prisma, SQLite, Zod, pdf-lib, Vitest, 
 
 ## AI-ondersteuning
 
-Delen van deze codebase zijn tot stand gekomen met AI-ondersteuning (ChatGPT voor tekststructuur en technische feedback; Cursor voor code-verbeteringen zoals validatie, tests, het repository-pattern en documentatie). Alle keuzes zijn door mij begrepen, nagekeken, getest en waar nodig aangepast. AI is gebruikt als hulpmiddel, niet als vervanging van mijn eigen werk.
+Delen van deze codebase zijn tot stand gekomen met AI-ondersteuning (ChatGPT voor tekststructuur en technische feedback; Cursor voor code-verbeteringen zoals validatie, tests, het repository-pattern en documentatie). Alle keuzes werden door mij opgebouwd, begrepen, nagekeken, getest en waar nodig aangepast. AI is gebruikt als hulpmiddel, niet als vervanging van mijn eigen werk.
