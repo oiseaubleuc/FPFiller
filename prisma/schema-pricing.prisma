@@ -1,0 +1,108 @@
+// Pricing Simulator Models - Add to existing schema.prisma
+
+enum PricingDomain {
+  IT_SOFTWARE
+  CONSTRUCTION
+  HOSPITALITY
+  CONSULTING
+  DESIGN_CREATIVE
+  EDUCATION
+  HEALTHCARE
+  LEGAL
+  MARKETING
+  REAL_ESTATE
+}
+
+enum ExperienceLevel {
+  JUNIOR
+  MEDIOR
+  SENIOR
+  EXPERT
+}
+
+model Domain {
+  id          Int            @id @default(autoincrement())
+  name        String         @unique
+  domain      PricingDomain
+  description String?
+  icon        String?
+  active      Boolean        @default(true)
+  
+  serviceRates ServiceRate[]
+  simulations  PriceSimulation[]
+  
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model ServiceRate {
+  id              Int              @id @default(autoincrement())
+  
+  domainId        Int
+  domain          Domain           @relation(fields: [domainId], references: [id])
+  
+  serviceName     String
+  serviceType     String
+  description     String?
+  
+  // Pricing info
+  minRatePerHour  Int             // in cents
+  maxRatePerHour  Int             // in cents
+  avgRatePerHour  Int             // in cents
+  
+  experienceLevel ExperienceLevel @default(MEDIOR)
+  
+  // Additional costs
+  materialCostPct Int?            // percentage
+  overheadPct     Int?            // percentage
+  
+  region          String?         @default("België")
+  currency        String          @default("EUR")
+  
+  active          Boolean         @default(true)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  @@index([domainId])
+  @@index([serviceName])
+}
+
+model PriceSimulation {
+  id              Int            @id @default(autoincrement())
+  
+  domainId        Int
+  domain          Domain         @relation(fields: [domainId], references: [id])
+  
+  projectName     String
+  serviceType     String
+  
+  // Input parameters
+  hours           Int?
+  quantity        Int?
+  experienceLevel ExperienceLevel?
+  
+  // Calculated results
+  laborCostCents      Int
+  materialCostCents   Int?
+  overheadCostCents   Int?
+  subtotalCents       Int
+  vatCents            Int
+  totalCents          Int
+  
+  // Market comparison
+  marketMinCents      Int?
+  marketMaxCents      Int?
+  marketAvgCents      Int?
+  
+  // Metadata
+  parameters      String?        // JSON string with additional params
+  currency        String         @default("EUR")
+  userId          String?
+  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  @@index([domainId])
+  @@index([createdAt])
+}

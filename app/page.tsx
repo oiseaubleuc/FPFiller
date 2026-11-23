@@ -17,6 +17,12 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
+              href="/pricing"
+              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white px-8 py-3 rounded-lg text-lg font-medium transition-all shadow-lg transform hover:scale-105"
+            >
+              🎯 Prijzen Simuleren
+            </Link>
+            <Link
               href="/invoices/new"
               className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-lg text-lg font-medium transition-colors"
             >
@@ -32,7 +38,19 @@ export default function HomePage() {
         </div>
 
         {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16">
+          <div className="bg-gradient-to-br from-orange-900/20 to-red-900/20 p-6 rounded-lg shadow-lg border border-orange-700/50">
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-600 to-red-600 rounded-lg flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">Prijssimulatie</h3>
+            <p className="text-gray-300">
+              Bereken en vergelijk prijzen voor 10+ verschillende professionele domeinen met real-time marktdata.
+            </p>
+          </div>
+          
           <div className="bg-black p-6 rounded-lg shadow-lg border border-gray-800">
             <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center mb-4">
               <svg className="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
