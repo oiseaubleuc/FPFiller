@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { formatEuro } from '@/lib/pricing/calculator';
+import { downloadPDF, type PDFData } from '@/lib/pricing/pdf-generator';
+import { supportedCurrencies, convertCurrency, formatCurrency } from '@/lib/pricing/currency';
+import { generateRecommendations, getPricingScore, type RecommendationInput } from '@/lib/pricing/ai-recommendations';
 
 interface Domain {
   id: string;
@@ -38,6 +41,7 @@ export default function PricingSimulatorPage() {
   const [result, setResult] = useState<PricingResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('EUR');
 
   // Fetch domains on mount
   useEffect(() => {
@@ -45,7 +49,25 @@ export default function PricingSimulatorPage() {
       .then(res => res.json())
       .then(data => {
         setDomains(data.domains);
-        if (data.domains.length > 0) {
+        
+        // Check for template from localStorage
+        const templateStr = localStorage.getItem('pricing_template');
+        if (templateStr) {
+          try {
+            const template = JSON.parse(templateStr);
+            setSelectedDomain(template.domain);
+            setServiceType(template.serviceType);
+            setHours(template.hours);
+            setExperienceLevel(template.experienceLevel);
+            setMaterialCostPct(template.materialCostPct);
+            setOverheadPct(template.overheadPct);
+            setVatPercent(template.vatPercent);
+            // Clear template from storage
+            localStorage.removeItem('pricing_template');
+          } catch (error) {
+            console.error('Error loading template:', error);
+          }
+        } else if (data.domains.length > 0) {
           setSelectedDomain(data.domains[0].id);
           setServiceType(data.domains[0].services[0]);
         }
@@ -86,12 +108,49 @@ export default function PricingSimulatorPage() {
       }
 
       setResult(data.result);
+      
+      // Save to localStorage for dashboard
+      saveSimulation(data.input, data.result);
     } catch (err: any) {
       setError(err.message);
       setResult(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveSimulation = (input: any, result: any) => {
+    try {
+      const simulations = JSON.parse(localStorage.getItem('pricing_simulations') || '[]');
+      simulations.push({
+        input,
+        result,
+        timestamp: new Date().toISOString()
+      });
+      // Keep only last 100 simulations
+      if (simulations.length > 100) {
+        simulations.shift();
+      }
+      localStorage.setItem('pricing_simulations', JSON.stringify(simulations));
+    } catch (error) {
+      console.error('Error saving simulation:', error);
+    }
+  };
+
+  const downloadReport = () => {
+    if (!result) return;
+    
+    const pdfData: PDFData = {
+      domain: selectedDomain,
+      serviceType,
+      hours,
+      experienceLevel,
+      result,
+      timestamp: new Date().toISOString()
+    };
+    
+    const filename = `pricing-${selectedDomain}-${Date.now()}.html`;
+    downloadPDF(pdfData, filename);
   };
 
   const selectedDomainData = domains.find(d => d.id === selectedDomain);
@@ -257,6 +316,24 @@ export default function PricingSimulatorPage() {
                       className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
                     />
                   </div>
+
+                  {/* Currency */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Valuta
+                    </label>
+                    <select
+                      value={selectedCurrency}
+                      onChange={(e) => setSelectedCurrency(e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    >
+                      {supportedCurrencies.map((curr) => (
+                        <option key={curr.code} value={curr.code}>
+                          {curr.flag} {curr.name} ({curr.symbol})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
@@ -273,7 +350,12 @@ export default function PricingSimulatorPage() {
                   <div className="space-y-3">
                     <div className="flex justify-between text-gray-300">
                       <span>Arbeidskosten</span>
-                      <span className="font-medium">{formatEuro(result.laborCost)}</span>
+                      <span className="font-medium">
+                        {selectedCurrency === 'EUR' 
+                          ? formatEuro(result.laborCost)
+                          : formatCurrency(convertCurrency(result.laborCost, selectedCurrency), selectedCurrency)
+                        }
+                      </span>
                     </div>
                     
                     {result.materialCost > 0 && (
@@ -305,7 +387,12 @@ export default function PricingSimulatorPage() {
                     <div className="border-t border-gray-700 pt-3">
                       <div className="flex justify-between text-2xl font-bold text-orange-500">
                         <span>Totaal</span>
-                        <span>{formatEuro(result.total)}</span>
+                        <span>
+                          {selectedCurrency === 'EUR'
+                            ? formatEuro(result.total)
+                            : formatCurrency(convertCurrency(result.total, selectedCurrency), selectedCurrency)
+                          }
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -326,8 +413,57 @@ export default function PricingSimulatorPage() {
                   </div>
                 </div>
 
+                {/* AI Recommendations */}
+                {result && (
+                  <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-700/50 rounded-xl p-6">
+                    <h3 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
+                      <span>🤖</span>
+                      <span>AI Aanbevelingen</span>
+                    </h3>
+                    {(() => {
+                      const recInput: RecommendationInput = {
+                        domain: selectedDomain,
+                        hours,
+                        experienceLevel,
+                        total: result.total,
+                        marketAvg: result.marketAvg,
+                        hourlyRate: result.hourlyRate
+                      };
+                      const recommendations = generateRecommendations(recInput);
+                      const score = getPricingScore(recInput);
+                      
+                      return (
+                        <>
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-gray-300">Pricing Score</span>
+                              <span className="text-lg font-bold text-purple-400">{score}/100</span>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-2">
+                              <div
+                                className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full"
+                                style={{ width: `${score}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            {recommendations.slice(0, 3).map((rec, idx) => (
+                              <div key={idx} className="text-xs bg-gray-800/50 rounded p-2">
+                                <div className="font-medium text-white mb-1">
+                                  {rec.icon} {rec.title}
+                                </div>
+                                <div className="text-gray-400">{rec.message}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 {/* Market Comparison */}
-                {result.marketAvg && (
+                {result && result.marketAvg && (
                   <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-gray-700">
                     <h3 className="text-lg font-bold text-white mb-4">Markt Vergelijking</h3>
                     <div className="space-y-2 text-sm">
@@ -345,6 +481,16 @@ export default function PricingSimulatorPage() {
                       </div>
                       
                       <div className="pt-3 border-t border-gray-700">
+                        <button
+                          onClick={() => downloadReport()}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                        >
+                          <span>📄</span>
+                          <span>Download PDF</span>
+                        </button>
+                      </div>
+                      
+                      <div className="pt-1">
                         {getMarketComparison() === 'below' && (
                           <div className="text-yellow-500 text-xs">
                             ⚠️ Onder marktgemiddelde - Overweeg hogere prijzen
